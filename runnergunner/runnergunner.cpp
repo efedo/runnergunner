@@ -401,8 +401,8 @@ int _removeRuns(std::vector<InputFileData>& files, const std::vector<std::string
 }
 
 // Merges all .tab or .sf files in a directory, assuming that .sf files are named after runs
-void mergeFiles(const std::string& outfile, const std::vector<std::filesystem::path>& files, bool overwrite = false, const FileType filetype = FileType::Either,
-	RunnerOutput specialmode = RunnerOutput::normal, std::vector<std::string> & removals = std::vector<std::string>(), bool removedups = false) 
+void mergeFiles(const std::string& outfile, const std::vector<std::filesystem::path>& files, std::vector<std::string>& removals, bool overwrite = false, const FileType filetype = FileType::Either,
+	RunnerOutput specialmode = RunnerOutput::normal,  bool removedups = false) 
 {
 	std::vector<InputFileData> goodFiles;
 	int runsum = _checkFiles(files, goodFiles, filetype);
@@ -429,8 +429,8 @@ void mergeFiles(const std::string& outfile, const std::vector<std::filesystem::p
 }
 
 // Gathers and merges all .tab or .sf files in a directory, assuming that .sf files are named after runs
-void gatherFiles(const std::string& outfile, const std::filesystem::path& dir = "", bool overwrite = false, const FileType filetype = FileType::Either,
-	RunnerOutput specialmode = RunnerOutput::normal, std::vector<std::string>& removals = std::vector<std::string>(), bool removedups = false) 
+void gatherFiles(const std::string& outfile, std::vector<std::string>& removals, const std::filesystem::path& dir = "", bool overwrite = false, const FileType filetype = FileType::Either,
+	RunnerOutput specialmode = RunnerOutput::normal, bool removedups = false) 
 {
 	std::cout << "Gathering and checking files from : " << dir << "\n";
 	// Loop over directory contents, making a list of good files
@@ -441,7 +441,7 @@ void gatherFiles(const std::string& outfile, const std::filesystem::path& dir = 
 	for (int i = 0; (i < 3) && (i < checkFiles.size()); ++i) {
 		std::cout << "\t" << checkFiles.at(i) << "\n";
 	}
-	mergeFiles(outfile, checkFiles, overwrite, filetype, specialmode, removals, removedups);
+	mergeFiles(outfile, checkFiles, removals, overwrite, filetype, specialmode, removedups);
 }
 
 // In backend function:
@@ -623,11 +623,11 @@ int main(int argc, char* argv[]) {
 						fullpaths.push_back(std::filesystem::path(filename)); // dir should already have terminating slash
 					}
 				}
-				mergeFiles(output, fullpaths, overwrite, type, specialmode, removals, removedups);
+				mergeFiles(output, fullpaths, removals, overwrite, type, specialmode, removedups);
 			}
 		}
 		else {
-			gatherFiles(output, dir, overwrite, type, specialmode, removals, removedups);
+			gatherFiles(output, removals, dir, overwrite, type, specialmode, removedups);
 		}
 		return 0;
 	}
