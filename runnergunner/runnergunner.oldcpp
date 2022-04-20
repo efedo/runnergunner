@@ -1,0 +1,395 @@
+﻿// SalmonMerge.cpp : Defines the entry point for the application.
+//
+
+#include "SalmonMerge.h"
+#include <filesystem>
+#include <vector>
+#include <fstream>
+#include <memory>
+#include <stdlib.h>
+#include <set>
+
+unsigned int fileSystemMaxFilesOpen = 500;
+
+enum class FileType { Salmon, Tab, Either };
+
+struct OpenInputFile {
+	std::string name = "unassigned";
+	std::filesystem::path path = "none";
+	FileType filetype = FileType::Salmon;
+	std::set<size_t> columns;
+	std::unique_ptr<std::ifstream> stream;
+	std::unique_ptr<char[]> buffer;
+};
+
+inline void splitLineOnChar(const std::string& _Str, const char& _Tok, std::vector<std::string>& _Tokens, const size_t& _HintSz)
+{
+	_Tokens.reserve(_HintSz);
+	const char* _Beg(&_Str[0]), * _End(&_Str[_Str.size()]);
+	for (const char* _Ptr = _Beg; _Ptr < _End; ++_Ptr)
+	{
+		if (*_Ptr == _Tok)
+		{
+			_Tokens.push_back(std::string(_Beg, _Ptr));
+			_Beg = 1 + _Ptr;
+		}
+	}
+
+	_Tokens.push_back(std::string(_Beg, _End));
+}
+
+// C code; should be fast
+void splitLineOnTabs(const std::string& line, std::vector<std::string>& tokens, const size_t& _HintSz) {
+	splitLineOnChar(line, '\t', tokens, _HintSz);
+}
+
+bool checkSalmonFile(const std::string& file) {
+	std::ifstream newFileStream = std::ifstream(file);
+	if (newFileStream.good()) {
+		// Get first line and check that first line matches expectations
+		std::string line;
+		std::vector<std::string> linesplit;
+		if (std::getline(newFileStream, line)) {
+			splitLineOnTabs(line, linesplit, 5);
+			if (linesplit.size() != 5) { // wrong number of columns
+				std::cerr << "File " << file << " should have had 5 columns, but actually had " << linesplit.size() << " and is being omitted\n";
+				return false;
+			}
+			else if (linesplit.at(3) != "TPM") { // TPM not in correct position
+				std::cerr << "Third column of file " << file << " should have been TPM, but was actually: " << linesplit.at(3) << ". File is being omitted.\n";
+				return false;
+			}
+		}
+		else {
+			std::cerr << "Could not get first line from file " << file << "\n";
+			return false;
+		}
+	}
+	else {
+		std::cerr << "File " << file << " failed to open.\n";
+		return false;
+	}
+	return true;
+}
+
+bool checkTabFile(const std::string& file) {
+	std::ifstream newFileStream = std::ifstream(file);
+	if (newFileStream.good()) {
+		// Get first line and check that first line matches expectations
+		std::string line;
+		std::vector<std::string> linesplit;
+		if (std::getline(newFileStream, line)) {
+			splitLineOnTabs(line, linesplit, 10);
+			if (linesplit.size() < 2) { // wrong number of columns
+				std::cerr << "File " << file << " should have had at least 2 columns, but actually had " << linesplit.size() << " and is being omitted\n";
+				return false;
+			}
+			else if (linesplit.at(0) != "RNA-see TPM data file") { // TPM not in correct position
+				std::cerr << "First cell of file " << file << " should have been 'RNA-see TPM data file', but was actually: " << linesplit.at(0) << ". File is being omitted.\n";
+				return false;
+			}
+		}
+		else {
+			std::cerr << "Could not get first line from file " << file << "\n";
+			return false;
+		}
+	}
+	else {
+		std::cerr << "File " << file << " failed to open.\n";
+		return false;
+	}
+	return true;
+}
+
+// Gathers all .tab and .sf files in a directory, assuming that .sf files are named after runs
+void gatherFiles(const std::filesystem::path& dir, const FileType filetype, const std::string& outfile) {
+	std::cout << "Gathering and checking files from : " << dir << "\n";
+	// Loop over directory contents, making a list of good files
+	std::vector<std::filesystem::path> goodfiles;
+	for (auto& file : std::filesystem::directory_iterator(dir)) {
+		if ((filetype == FileType::Salmon || filetype == FileType::Either) && (file.path().extension() == ".sf")) {
+			if (checkSalmonFile(file.path().string())) goodfiles.push_back(file.path());
+		}
+		if ((filetype == FileType::Tab || filetype == FileType::Either) && (file.path().extension() == ".rnatab")) {
+			//std::cout << "Checking file : " << file << "\n";
+			if (checkTabFile(file.path().string())) goodfiles.push_back(file.path());
+		}
+	}
+	batchGather(goodfiles, filetype, outfile);
+}
+
+// Gathers Salmon files from cwd if no dir supplied
+void gatherSalmonFiles(const std::string& outFile) {
+	std::filesystem::path getcwd = std::filesystem::current_path();
+	gatherSalmonFiles(getcwd, outFile);
+}
+
+void batchGather(std::vector<std::filesystem::path>& infiles, const FileType filetype, const std::string& outfile) {
+	size_t goodFiles = infiles.size();
+	if (goodFiles < infiles.size()) {
+		std::cerr << "Insufficient good Salmon output files to gather.\n";
+		exit(1);
+	}
+	else if (infiles.size() > fileSystemMaxFilesOpen) {
+
+	}
+	else {
+		merge
+	}
+}
+
+void mergeFiles(std::vector<OpenInputFile>& batch, std::string& outFilePath) {
+	// Open input files
+	std::vector<OpenInputFile> openFileVec;
+	for(auto & file : batch) {
+		const unsigned long bufSize = 1048576; // 1 mb
+		auto fileBufferPtr = std::make_unique<char[]>(bufSize);
+		std::string name = file.path.stem().string();
+		auto newIfstreamPtr = std::make_unique<std::ifstream>(file.path);
+		newIfstreamPtr->rdbuf()->pubsetbuf(fileBufferPtr.get(), bufSize);
+		if (newIfstreamPtr->good()) {
+			openFileVec.push_back(OpenInputFile());
+			openFileVec.back().name = name;
+			openFileVec.back().stream.swap(newIfstreamPtr);
+			openFileVec.back().buffer.swap(fileBufferPtr);
+		}
+		else {
+			std::cerr << "File " << file.path << " failed to open.\n";
+			std::cerr << "You may be trying to combine more files than your operating system can simultaneously open.\n";
+			exit(1);
+		}
+	}
+
+	// Open and prep output file
+	std::ofstream out(outFilePath, std::ios::trunc);
+	const unsigned long bufSize = 10485760; // 10 mb
+	auto outBuffer = std::make_unique<char[]>(bufSize);
+	out.rdbuf()->pubsetbuf(outBuffer.get(), bufSize);
+	if (!out.good()) {
+		throw("Failed to open output file for combined Salmon output");
+		exit(1);
+	}
+
+	// Prepare to merge the files
+	std::string fileLine;
+	std::vector<std::string> fileLineSplitVec;
+	
+	// Print file header line
+	out << "RNA-see TPM data file"; // Output header line
+
+	// Loop through lines
+	bool eof = false;
+	while (!eof) {
+		bool header = true;
+		bool firstfileofline = true;
+		std::string genename;
+		for (auto& file : openFileVec) {
+
+			// Determine if reached end
+			if (!std::getline(*(file.stream.get()), fileLine)) {
+				if (!firstfileofline) {
+					std::cerr << "File " << file.name << " ended prematurely. Aborting combination operation.\n";
+					exit(1);
+				}
+				eof = true;
+				break;
+			};
+
+			if (file.filetype == FileType::Salmon) {
+				if (header) {
+					out << '\t' << file.name;
+				}
+				else {
+					splitLineOnTabs(fileLine, fileLineSplitVec, 5);
+
+					// Get/check/write gene name
+					if (firstfileofline) {
+						genename = fileLineSplitVec.at(0);
+						out << genename << '\t';
+					}
+					else if (genename != fileLineSplitVec.at(0)) {
+						std::cerr << "Gene name mismatch in file " << file.name << ". Expected gene " << genename << " but read gene " << fileLineSplitVec.at(0) << "\n";
+						exit(1);
+					}
+					// Output data
+					out << fileLineSplitVec.at(3);
+				}
+			} else if (file.filetype == FileType::Tab) {
+				splitLineOnTabs(fileLine, fileLineSplitVec, file.columns.size());
+				if (fileLineSplitVec.size() < *file.columns.end()) {
+					std::cerr << "File " << file.name << " ended prematurely. Aborting combination operation.\n";
+					exit(1);
+				}
+				for (auto& col : file.columns) {
+					out << '\t' << fileLineSplitVec[col];
+				}
+			}
+			// Declare no longer first file of line
+			firstfileofline = false;
+		}
+		header = false; // ends header after first line
+		out << '\n';
+	}
+
+	// Clean up
+	for (auto& file : openFileVec) {
+		file.stream->close();
+	}
+	out.close();
+}
+
+// Combine a single batch of Salmon files
+void gatherSalmonFilesBatch(std::vector<std::filesystem::directory_entry>& batch, std::string& outFilePath) {
+
+
+}
+
+// Merge together an arbitrary number of tab files.
+void mergeFiles(const std::vector<std::string>& filesToMerge, const std::string& outFile) {
+
+	FileType combineType = FileType::Either;
+	if (combineType == FileType::Either) {
+		std::cout << "Processing Salmon and RNA-see tab input files into RNA-see tab output file.\n";
+	}
+	else if (combineType == FileType::Salmon) {
+		std::cout << "Processing Salmon input files into RNA-see tab output file.\n";
+	}
+	else if (combineType == FileType::Tab) {
+		std::cout << "Processing Salmon and RNA-see tab input files into RNA-see tab output file.\n";
+	}
+
+	if (std::filesystem::exists(outFile)) {
+		std::cerr << "Output file already exists\n";
+		exit(1);
+	}
+
+	// If you were only given a single file, just copy it!
+	if (filesToMerge.size() == 1) {
+		std::filesystem::copy_file(*filesToMerge.begin(), outFile);
+		return;
+	}
+
+	// Check if you have duplicate file names
+	std::set<std::filesystem::path> filesAdded;
+	for (auto& file : filesToMerge) {
+		std::filesystem::path nextPath(file);
+		if (filesAdded.count(nextPath)) throw("Trying to merge multiple copies of the same input file");
+		filesAdded.insert(nextPath);
+	}
+
+	// Combine in batches
+
+	// In backend function:
+		// Check that all files have same number of rows = genes, and report number at end
+		// Check that all output rows have same number of runs, and report number at end
+		// 
+}
+
+// Merge together two tab files
+void mergeTabFiles(const std::string& fileA, const std::string& fileB, const std::string& outFile) {
+	std::cout << "Combining RNA-see tab input files:\n\t" << fileA << "\n\t" << fileB << "\n";
+	mergeTabFiles({ fileA, fileB }, outFile);
+}
+
+void removeRunsFromTabFile(const std::string& inFile, const std::string& outFile) {
+	// Load input file
+
+	// User info
+	std::cout << "Removing runs from tab file: " << inFile << std::endl;
+	std::cout << "Writing to new file: " << outFile << std::endl;
+
+	const unsigned long bufSize = 10485760; // Set file buffer size to 10 mb
+	std::unique_ptr<char[]> fileBufferPtr(new char[bufSize]);
+	std::fstream in(inFile);    // Create an input file stream. //std::filesystem::path(xobj)
+	in.rdbuf()->pubsetbuf(fileBufferPtr.get(), bufSize);
+	if (!in.good()) {
+		std::cerr << "File " << inFile << " failed to open." << std::endl;
+		std::string errStr = "File " + inFile + " failed to open";
+		throw(errStr);
+	}
+
+	// Get runs from first line
+	std::string tmpLine;
+	std::vector<std::string> tempLineVec;
+
+	std::getline(in, tmpLine);
+	splitLineOnTabs(tmpLine, tempLineVec);
+
+	const unsigned int rows = static_cast<unsigned int>(tempLineVec.size());
+	const unsigned int numRuns = rows - 1;
+
+	if (numRuns < 1) {
+		std::cerr << "File " << inFile << " contained no runs." << std::endl;
+	}
+
+	// Make a map of the runs present in the file, removing any duplicates in the process
+	std::map<std::string, unsigned int> runMap; // name, position
+	for (unsigned int i = 1; i != rows; ++i) {
+		if (!runMap.count(tempLineVec.at(i))) {
+			runMap.emplace(tempLineVec.at(i), i);
+		}
+		else {
+			std::cerr << "Warning, run " << tempLineVec.at(i) << " was repeated. Omitting repetitions." << std::endl;
+		}
+	}
+
+	// Remove undesired runs
+	for (std::set<std::string>::const_iterator it = globals::remruns.begin(); it != globals::remruns.end(); ++it) {
+		if (runMap.count(*it)) {
+			std::cout << "Removing run " << *it << std::endl;
+			runMap.erase(*it);
+		}
+		else {
+			std::cout << "Could not find run " << *it << std::endl;
+		}
+	}
+
+	// Open output file
+	const unsigned long bufSizeOut = 10485760; // Set file buffer size to 10 mb
+	std::unique_ptr<char[]> bufferOut(new char[bufSizeOut]);
+	std::ofstream out(outFile, std::ios::trunc);    // Create an input file stream. //std::filesystem::path(xobj)
+	out.rdbuf()->pubsetbuf(bufferOut.get(), bufSizeOut);
+	if (!out.good()) { // Throw if the file fails to open
+		std::cerr << "File " << outFile << " failed to open for output." << std::endl;
+		std::string errStr = "File " + inFile + " failed to open";
+		throw(errStr);
+	}
+
+	// Print new run names
+	out << "throw";
+	for (std::map<std::string, unsigned int>::iterator it = runMap.begin(); it != runMap.end(); ++it) {
+		out << '\t' << it->first;
+	}
+	out << std::endl;
+
+	// Loop through file 
+	unsigned long lineNo = 2;
+	while (getline(in, tmpLine)) {
+		tempLineVec.clear();
+		splitLineOnTabs(tmpLine, tempLineVec);
+		if (tempLineVec.size() != rows) {
+			std::cerr << "Line " << lineNo << " contained the wrong number of runs." << std::endl;
+			throw("Gene contained the wrong number of run data points!");
+		}
+		else {
+			// Output gene name
+			out << tempLineVec.at(0);
+			for (std::map<std::string, unsigned int>::iterator it = runMap.begin(); it != runMap.end(); ++it) {
+				out << '\t' << tempLineVec.at(it->second);
+			}
+			out << std::endl;
+		}
+		out.flush();
+		++lineNo;
+		if (!(lineNo % 100)) std::cout << "\rProcessed gene " << lineNo << ".";
+
+	}
+	out.close();
+	std::cout << "\nFinished writing output to new file.\n";
+}
+
+int main()
+{
+	cout << "Hello CMake." << endl;
+	return 0;
+}
