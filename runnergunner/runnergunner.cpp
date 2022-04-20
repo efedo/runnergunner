@@ -463,13 +463,16 @@ void print_help(const argparse::ArgumentParser& parser) {
 }
 
 int main(int argc, char* argv[]) {
-	std::vector<std::string> args = { "-o", "combinedtest.txt", "--remove", "DRR072887", "--duplicates", "--overwrite"}; //,  , "--nooutput" // " - duplicates", 
-	std::vector<char*> nargv;
-	nargv.push_back(argv[0]);
-	for (std::string& s : args) nargv.push_back(&s[0]);
-	nargv.push_back(NULL);
-	argc = (int)(nargv.size()) - 1;
-	argv = nargv.data();
+	bool fakeargs = false;
+	if (fakeargs) {
+		std::vector<std::string> args = { "-o", "combinedtest.txt", "--remove", "DRR072887", "--duplicates", "--overwrite" }; //,  , "--nooutput" // " - duplicates", 
+		std::vector<char*> nargv;
+		nargv.push_back(argv[0]);
+		for (std::string& s : args) nargv.push_back(&s[0]);
+		nargv.push_back(NULL);
+		argc = (int)(nargv.size()) - 1;
+		argv = nargv.data();
+	}
 
 	// print all command line arguments
 	std::cout << argv[0] << " ";
