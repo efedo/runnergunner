@@ -137,6 +137,8 @@ int _checkTabFile(InputFileData & file) {
 
 int _checkFiles(const std::vector<std::filesystem::path> files, std::vector<InputFileData>& invfiles, const FileType filetype = FileType::Either) {
 	int runsum = 0;
+	int fileschecked = 0;
+	std::cout << "\n";
 	for (auto& file : files) {
 		InputFileData filedata;
 		filedata.path = file;
@@ -162,143 +164,156 @@ int _checkFiles(const std::vector<std::filesystem::path> files, std::vector<Inpu
 			}
 		}
 		runsum += addedruns;
+		if (!(++fileschecked % 50)) {
+			std::cout << "\rChecked " << fileschecked << " files.";
+		}
 	}
+	std::cout << "\rChecked " << fileschecked << " files.\n";
 	return runsum;
 }
 
 void _mergeFilesBatch(std::vector<InputFileData>& batch, const std::string& outFilePath, const FileType filetype,
 	RunnerOutput specialmode) {
 
-	// Open input files and identify file types
-	for (auto& file : batch) {
-		const unsigned long bufSize = 1048576; // 1 mb
-		std::shared_ptr<char[]> fileBufferPtr(new char[bufSize]); //<char[]>(bufSize);
-		std::string name = file.path.stem().string();
-		auto newIfstreamPtr = std::make_shared<std::ifstream>(file.path);
-		newIfstreamPtr->rdbuf()->pubsetbuf(fileBufferPtr.get(), bufSize);
-		if (newIfstreamPtr->good()) {
-			file.stream.swap(newIfstreamPtr);
-			file.buffer.swap(fileBufferPtr);
-		}
-		else {
-			std::cerr << "File " << file.path << " failed to open.\n";
-			std::cerr << "You may be trying to combine more files than your operating system can simultaneously open.\n";
-			exit(1);
-		}
-	}
+	try {
 
-	// Open and prep output file
-	std::ofstream out;
-	const unsigned long bufSize = 10485760; // 10 mb
-	auto outBuffer = std::make_unique<char[]>(bufSize);
-	if (specialmode != RunnerOutput::none) {
-		out = std::ofstream(outFilePath, std::ios::trunc);
-		out.rdbuf()->pubsetbuf(outBuffer.get(), bufSize);
-		if (!out.good()) {
-			throw("Failed to open output file for combined Salmon output");
-			exit(1);
-		}
-	}
-
-	// Prepare to merge the files
-	std::string fileLine;
-	std::vector<std::string> fileLineSplitVec;
-
-	// Print file header line (if not outputting run/gene list
-	if (specialmode == RunnerOutput::normal) {
-		out << "RNA-see TPM data file"; // Output header line
-	}
-	
-	// Loop through lines
-	bool eof = false;
-	bool header = true;
-
-	unsigned long lineNo = 1;
-	while (!eof) {
-		bool firstfileofline = true;
-		std::string genename;
+		// Open input files and identify file types
 		for (auto& file : batch) {
-
-			// Determine if reached end
-			if (!std::getline(*(file.stream.get()), fileLine)) {
-				if (!firstfileofline) {
-					std::cerr << "File " << file.path << " ended prematurely. Aborting combination operation.\n";
-					exit(1);
-				}
-				eof = true;
-				break;
-			};
-
-			// Split line
-			if (file.filetype == FileType::Salmon) splitLineOnTabs(fileLine, fileLineSplitVec, 5);
-			else splitLineOnTabs(fileLine, fileLineSplitVec, file.columns.size());
-
-			// If it's not the header, write/check gene names
-			if (!header) {
-				if (firstfileofline) { // If it's the first file of the line write gene names in first column
-					genename = fileLineSplitVec.at(0);
-					if ((specialmode != RunnerOutput::printruns) && (specialmode != RunnerOutput::none)) out << genename;
-				}
-				else if (genename != fileLineSplitVec.at(0)) { // If it's not the first file, check that gene names match at least
-					std::cerr << "Gene name mismatch in file " << file.path << ". Expected gene " << genename << " but read gene " << fileLineSplitVec.at(0) << "\n";
-					exit(1);
-				}
+			const unsigned long bufSize = 1048576; // 1 mb
+			std::shared_ptr<char[]> fileBufferPtr(new char[bufSize]); //<char[]>(bufSize);
+			std::string name = file.path.stem().string();
+			auto newIfstreamPtr = std::make_shared<std::ifstream>(file.path);
+			newIfstreamPtr->rdbuf()->pubsetbuf(fileBufferPtr.get(), bufSize);
+			if (newIfstreamPtr->good()) {
+				file.stream.swap(newIfstreamPtr);
+				file.buffer.swap(fileBufferPtr);
 			}
-	
-			// copy non-gene data
-			
-			if (file.filetype == FileType::Salmon) {
-				if ((specialmode != RunnerOutput::printgenes) && (specialmode != RunnerOutput::none)) {
-					if (header) {
-						if (specialmode == RunnerOutput::printruns) {
-							out << file.path.stem() << '\n'; // For Salmon files, write file name as run names in header
-						}
-						else {
-							out << '\t' << file.path.stem(); // For Salmon files, write file name as run names in header
-						}
-					}
-					else {
-						if (specialmode != RunnerOutput::printruns) {
-							out << '\t' << fileLineSplitVec.at(3); // If not header, copy data
-						}
-					}
-				}
+			else {
+				std::cerr << "File " << file.path << " failed to open.\n";
+				std::cerr << "You may be trying to combine more files than your operating system can simultaneously open.\n";
+				exit(1);
 			}
-			else if (file.filetype == FileType::Tab) { // For tab files, copy run names
-				if (!file.columns.size() || fileLineSplitVec.size() < (--file.columns.end())->colnum) {
-					std::cerr << "File " << file.path << " ended prematurely. Aborting combination operation.\n";
-					exit(1);
+		}
+
+		// Open and prep output file
+		std::ofstream out;
+		const unsigned long bufSize = 10485760; // 10 mb
+		auto outBuffer = std::make_unique<char[]>(bufSize);
+		if (specialmode != RunnerOutput::none) {
+			out = std::ofstream(outFilePath, std::ios::trunc);
+			out.rdbuf()->pubsetbuf(outBuffer.get(), bufSize);
+			if (!out.good()) {
+				throw("Failed to open output file for combined Salmon output");
+				exit(1);
+			}
+		}
+
+		// Prepare to merge the files
+		std::string fileLine;
+		std::vector<std::string> fileLineSplitVec;
+
+		// Print file header line (if not outputting run/gene list
+		if (specialmode == RunnerOutput::normal) {
+			out << "RNA-see TPM data file"; // Output header line
+		}
+
+		// Loop through lines
+		bool eof = false;
+		bool header = true;
+
+		unsigned long lineNo = 1;
+		while (!eof) {
+			bool firstfileofline = true;
+			std::string genename;
+			for (auto& file : batch) {
+
+				// Determine if reached end
+				if (!std::getline(*(file.stream.get()), fileLine)) {
+					if (!firstfileofline) {
+						std::cerr << "File " << file.path << " ended prematurely. Aborting combination operation.\n";
+						exit(1);
+					}
+					eof = true;
+					break;
+				};
+
+				// Split line
+				if (file.filetype == FileType::Salmon) splitLineOnTabs(fileLine, fileLineSplitVec, 5);
+				else splitLineOnTabs(fileLine, fileLineSplitVec, file.columns.size());
+
+				// If it's not the header, write/check gene names
+				if (!header) {
+					if (firstfileofline) { // If it's the first file of the line write gene names in first column
+						genename = fileLineSplitVec.at(0);
+						if ((specialmode != RunnerOutput::printruns) && (specialmode != RunnerOutput::none)) out << genename;
+					}
+					else if (genename != fileLineSplitVec.at(0)) { // If it's not the first file, check that gene names match at least
+						std::cerr << "Gene name mismatch in file " << file.path << ". Expected gene " << genename << " but read gene " << fileLineSplitVec.at(0) << "\n";
+						exit(1);
+					}
 				}
-				for (auto& col : file.columns) {
+
+				// copy non-gene data
+
+				if (file.filetype == FileType::Salmon) {
 					if ((specialmode != RunnerOutput::printgenes) && (specialmode != RunnerOutput::none)) {
-						if (specialmode == RunnerOutput::printruns) {
-							if (header) {
-								out << fileLineSplitVec.at(col.colnum) << '\n';
+						if (header) {
+							if (specialmode == RunnerOutput::printruns) {
+								out << file.path.stem() << '\n'; // For Salmon files, write file name as run names in header
+							}
+							else {
+								out << '\t' << file.path.stem(); // For Salmon files, write file name as run names in header
 							}
 						}
 						else {
-							out << '\t' << fileLineSplitVec.at(col.colnum);
+							if (specialmode != RunnerOutput::printruns) {
+								out << '\t' << fileLineSplitVec.at(3); // If not header, copy data
+							}
 						}
 					}
 				}
-			
-			}
-			firstfileofline = false; // Declare no longer first file of line
-		}
-		if (!header || (specialmode == RunnerOutput::normal)) {
-			if (!eof) out << '\n'; // Terminate line
-		}
-		header = false; // Declare no longer the header
-		if (!(lineNo % 1000)) std::cout << "\rProcessed gene " << lineNo << ".";
-		lineNo++;
-	}
+				else if (file.filetype == FileType::Tab) { // For tab files, copy run names
+					if (!file.columns.size() || fileLineSplitVec.size() < (--file.columns.end())->colnum) {
+						std::cerr << "File " << file.path << " ended prematurely. Aborting combination operation.\n";
+						exit(1);
+					}
+					for (auto& col : file.columns) {
+						if ((specialmode != RunnerOutput::printgenes) && (specialmode != RunnerOutput::none)) {
+							if (specialmode == RunnerOutput::printruns) {
+								if (header) {
+									out << fileLineSplitVec.at(col.colnum) << '\n';
+								}
+							}
+							else {
+								out << '\t' << fileLineSplitVec.at(col.colnum);
+							}
+						}
+					}
 
-	// Clean up
-	for (auto& file : batch) {
-		file.stream->close();
+				}
+				firstfileofline = false; // Declare no longer first file of line
+			}
+			if (!header || (specialmode == RunnerOutput::normal)) {
+				if (!eof) out << '\n'; // Terminate line
+			}
+			header = false; // Declare no longer the header
+			if (!(lineNo % 1000)) std::cout << "\rProcessed gene " << lineNo << ".";
+			lineNo++;
+		}
+
+		std::cout << "\rProcessed gene " << lineNo << ".\n";
+
+		// Clean up
+		for (auto& file : batch) {
+			file.stream->close();
+		}
+		if (specialmode != RunnerOutput::none) {
+			out.close();
+		}
 	}
-	if (specialmode != RunnerOutput::none) {
-		out.close();
+	catch (...) {
+		std::cerr << "Unknown merge error.\n";
+		exit(1);
 	}
 }
 
@@ -315,16 +330,6 @@ void _mergeFiles(std::vector<InputFileData>& infiles, const std::string& outfile
 	if (numfiles > maxCombine) {
 		std::cerr << "Trying to combine too many files (can combine " << maxCombine << " files but tried to combine " << infiles.size() << ").\n";
 		exit(1);
-	}
-
-	if (filetype == FileType::Either) {
-		std::cout << "Processing Salmon and RNA-see tab input files into RNA-see tab output file.\n";
-	}
-	else if (filetype == FileType::Salmon) {
-		std::cout << "Processing Salmon input files into RNA-see tab output file.\n";
-	}
-	else if (filetype == FileType::Tab) {
-		std::cout << "Processing Salmon and RNA-see tab input files into RNA-see tab output file.\n";
 	}
 
 	if (std::filesystem::exists(outfile) && !overwrite) {
@@ -344,7 +349,7 @@ void _mergeFiles(std::vector<InputFileData>& infiles, const std::string& outfile
 	}
 
 	// divide into merge batches if required
-	int batches = ((int)numfiles / fileSystemMaxFilesOpen) + 1;
+	int batches = (((int)numfiles + fileSystemMaxFilesOpen - 1) / fileSystemMaxFilesOpen);
 
 	if (batches > 1) {
 		std::vector<InputFileData> batchtempfiles;
@@ -355,18 +360,23 @@ void _mergeFiles(std::vector<InputFileData>& infiles, const std::string& outfile
 				end_range = infiles.begin() + ((i + 1) * fileSystemMaxFilesOpen) - 1;
 			}
 			std::vector<InputFileData> filebatch;
-			while (start_range++ <= end_range) {
+			while (start_range <= end_range) {
 				filebatch.push_back(*start_range);
+				start_range++;
 			}
 			std::string batchfile = outfile + "_temp_batch" + std::to_string(i);
 			batchtempfiles.push_back(InputFileData());
 			batchtempfiles.back().path.assign(batchfile);
 			batchtempfiles.back().filetype = FileType::Tab;
-			_mergeFiles(filebatch, batchfile, overwrite, filetype, specialmode);
+			std::cout << "Merging batch " << (i + 1) << " (of " << batches << ").\n";
+			//_mergeFiles(filebatch, batchfile, overwrite, filetype, specialmode);
 		}
+		std::cout << "Merging temporary output files into RNA-see tab output file " << outfile << ".\n";
+		for (auto& file : batchtempfiles) _checkTabFile(file);
 		_mergeFilesBatch(batchtempfiles, outfile, filetype, specialmode);
 	}
 	else {
+		std::cout << "Merging " << infiles.size() << " input files into RNA-see tab output file " << outfile << ".\n";
 		_mergeFilesBatch(infiles, outfile, filetype, specialmode);
 	}
 }
@@ -463,10 +473,12 @@ void print_help(const argparse::ArgumentParser& parser) {
 }
 
 int main(int argc, char* argv[]) {
-	bool fakeargs = false;
+	bool fakeargs = true;
+	std::vector<char*> nargv;
+	//std::vector<std::string> args = { "-o", "arabidopsis1.rnatab", "--duplicates", "-d", "D:/Programming/RNA-see_data/data/arabidopsis20220420.tar/arabidopsis20220420/20220420/" };
+	std::vector<std::string> args = { "-o", "arabidopsis1.rnatab", "--overwrite", "-d", "D:/Programming/RNA-see_data/data/arabidopsis20220420.tar/arabidopsis20220420/20220420/" };
+
 	if (fakeargs) {
-		std::vector<std::string> args = { "-o", "combinedtest.txt", "--remove", "DRR072887", "--duplicates", "--overwrite" }; //,  , "--nooutput" // " - duplicates", 
-		std::vector<char*> nargv;
 		nargv.push_back(argv[0]);
 		for (std::string& s : args) nargv.push_back(&s[0]);
 		nargv.push_back(NULL);
@@ -558,6 +570,12 @@ int main(int argc, char* argv[]) {
 		auto dir = program.get<std::string>("--dir");
 		if (dir.back() != '/' || dir.back() != '\\') dir.push_back('/'); // add terminating slash to dir
 		auto output = program.get<std::string>("--output");
+
+		std::filesystem::path tmpdir(dir);
+		if (!exists(tmpdir)) {
+			std::cerr << "Directory does not exist: " << tmpdir << "\n.";
+			exit(1);
+		}
 
 		auto typestr = program.get<std::string>("--type");
 		FileType type = FileType::Either;
